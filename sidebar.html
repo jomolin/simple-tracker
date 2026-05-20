@@ -1,0 +1,484 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simple Student Tracker</title>
+    <style>
+        :root {
+            --bg-primary: #faf8f5;
+            --bg-secondary: #ffffff;
+            --text-primary: #1a1614;
+            --text-secondary: #6b6560;
+            --accent-primary: #d97706;
+            --accent-secondary: #92400e;
+            --border: #e5e0db;
+            --success: #059669;
+            --warning: #dc2626;
+            --shadow: rgba(26, 22, 20, 0.08);
+        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        html, body { overflow-x: hidden; width: 100%; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: var(--bg-primary);
+            color: var(--text-primary);
+            line-height: 1.5;
+            min-height: 100vh;
+        }
+        .container { padding: 0.75rem; }
+
+        header {
+            background: var(--bg-secondary);
+            border-bottom: 3px solid var(--accent-primary);
+            padding: 0.75rem;
+            box-shadow: 0 4px 12px var(--shadow);
+        }
+        h1 {
+            font-size: 1.2rem;
+            color: var(--accent-secondary);
+            margin-bottom: 0.25rem;
+        }
+        .subtitle {
+            color: var(--text-secondary);
+            font-size: 0.8rem;
+        }
+
+        .main-tabs {
+            display: flex;
+            gap: 0.25rem;
+            margin-top: 0.5rem;
+            border-bottom: 2px solid var(--border);
+        }
+        .main-tab {
+            background: none;
+            border: none;
+            padding: 0.45rem 0.75rem;
+            font-size: 0.85rem;
+            font-weight: 500;
+            color: var(--text-secondary);
+            cursor: pointer;
+            border-bottom: 3px solid transparent;
+            transition: all 0.2s ease;
+        }
+        .main-tab:hover { color: var(--accent-primary); }
+        .main-tab.active {
+            color: var(--accent-secondary);
+            border-bottom-color: var(--accent-primary);
+        }
+        .tab-content { display: none; }
+        .tab-content.active { display: block; }
+
+        .section {
+            background: var(--bg-secondary);
+            border-radius: 8px;
+            padding: 0.85rem;
+            margin-bottom: 0.75rem;
+            border: 2px solid var(--border);
+            box-shadow: 0 2px 8px var(--shadow);
+        }
+        h2 {
+            font-size: 1.05rem;
+            color: var(--accent-secondary);
+            margin-bottom: 0.6rem;
+            border-left: 4px solid var(--accent-primary);
+            padding-left: 0.6rem;
+        }
+
+        button {
+            background: var(--accent-primary);
+            color: white;
+            border: none;
+            padding: 0.45rem 0.8rem;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.2s ease;
+        }
+        button:hover { background: var(--accent-secondary); }
+        button:disabled { opacity: 0.5; cursor: not-allowed; }
+        button.secondary { background: var(--text-secondary); }
+        button.secondary:hover { background: var(--text-primary); }
+        button.success { background: var(--success); }
+        button.success:hover { background: #047857; }
+        button.danger { background: var(--warning); }
+        button.danger:hover { background: #b91c1c; }
+
+        .button-group {
+            display: flex;
+            gap: 0.5rem;
+            flex-wrap: wrap;
+        }
+
+        .current-display {
+            background: linear-gradient(135deg, #fbbf24, var(--accent-primary));
+            border-radius: 10px;
+            padding: 1.5rem 1rem;
+            text-align: center;
+            margin-bottom: 0.75rem;
+        }
+        .current-name {
+            font-size: 1.8rem;
+            font-weight: bold;
+            color: var(--accent-secondary);
+        }
+        .current-placeholder {
+            color: var(--accent-secondary);
+            opacity: 0.85;
+            font-size: 0.95rem;
+        }
+
+        .info-cards {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 0.5rem;
+            margin-top: 0.75rem;
+        }
+        .info-card {
+            background: var(--bg-primary);
+            padding: 0.6rem;
+            border-radius: 6px;
+            text-align: center;
+            border: 2px solid var(--border);
+        }
+        .info-label {
+            font-size: 0.7rem;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 0.03em;
+        }
+        .info-value {
+            font-size: 1.3rem;
+            font-weight: 700;
+            color: var(--accent-secondary);
+        }
+
+        .action-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 0.5rem;
+            margin-top: 0.5rem;
+        }
+        .action-grid .full { grid-column: 1 / -1; }
+
+        .student-row {
+            display: grid;
+            grid-template-columns: 1fr auto auto;
+            gap: 0.5rem;
+            align-items: center;
+            background: var(--bg-primary);
+            padding: 0.6rem;
+            border-radius: 6px;
+            margin-bottom: 0.4rem;
+            border: 2px solid var(--border);
+        }
+        .student-row.manage {
+            grid-template-columns: 1fr auto auto auto;
+        }
+        .student-row.absent {
+            opacity: 0.6;
+            background: #fee2e2;
+        }
+        .student-name { font-weight: 600; }
+        .student-meta {
+            font-size: 0.78rem;
+            color: var(--text-secondary);
+        }
+        .student-actions {
+            display: flex;
+            gap: 0.35rem;
+        }
+        .student-actions button {
+            padding: 0.3rem 0.55rem;
+            font-size: 0.8rem;
+        }
+
+        .form-group { margin-bottom: 0.75rem; }
+        label {
+            display: block;
+            margin-bottom: 0.3rem;
+            font-weight: 500;
+            font-size: 0.85rem;
+        }
+        input[type="text"], input[type="file"], textarea {
+            width: 100%;
+            padding: 0.45rem;
+            border: 2px solid var(--border);
+            border-radius: 6px;
+            font-size: 0.85rem;
+            font-family: inherit;
+        }
+        textarea { resize: vertical; min-height: 80px; }
+        input:focus, textarea:focus {
+            outline: none;
+            border-color: var(--accent-primary);
+        }
+
+        .shortcuts {
+            background: var(--bg-primary);
+            padding: 0.6rem;
+            border-radius: 6px;
+            margin-top: 0.6rem;
+        }
+        .shortcut-item {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 0.82rem;
+            padding: 0.2rem 0;
+        }
+        .shortcut-key {
+            background: var(--bg-secondary);
+            padding: 0.2rem 0.45rem;
+            border-radius: 4px;
+            font-family: monospace;
+            font-size: 0.75rem;
+            border: 1px solid var(--border);
+        }
+
+        .filter-badge {
+            display: inline-block;
+            background: #e8f0fe;
+            color: #1967d2;
+            padding: 0.3rem 0.65rem;
+            border-radius: 12px;
+            font-size: 0.8rem;
+            font-weight: 600;
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 1.5rem 1rem;
+            color: var(--text-secondary);
+            font-size: 0.9rem;
+        }
+
+        .log-row {
+            display: grid;
+            grid-template-columns: auto 1fr auto;
+            gap: 0.6rem;
+            padding: 0.45rem 0.5rem;
+            border-bottom: 1px solid var(--border);
+            font-size: 0.82rem;
+        }
+        .log-row:last-child { border-bottom: none; }
+        .log-time {
+            color: var(--text-secondary);
+            font-family: monospace;
+            font-size: 0.78rem;
+        }
+        .log-outcome {
+            padding: 0.15rem 0.45rem;
+            border-radius: 10px;
+            font-size: 0.72rem;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+        .log-outcome.correct { background: #d1fae5; color: var(--success); }
+        .log-outcome.incorrect { background: #fee2e2; color: var(--warning); }
+        .log-outcome.absent { background: #fef3c7; color: #92400e; }
+
+        .log-container {
+            max-height: 400px;
+            overflow-y: auto;
+            background: var(--bg-primary);
+            border-radius: 6px;
+            padding: 0.4rem;
+            border: 1px solid var(--border);
+        }
+
+        .inline-form {
+            background: var(--bg-primary);
+            border: 2px solid var(--accent-primary);
+            border-radius: 6px;
+            padding: 0.6rem;
+            margin-bottom: 0.6rem;
+        }
+        .inline-form-row {
+            display: grid;
+            grid-template-columns: 1fr 1fr auto;
+            gap: 0.4rem;
+            margin-bottom: 0.5rem;
+        }
+        .inline-form-row input,
+        .inline-form-row select {
+            padding: 0.45rem;
+            border: 2px solid var(--border);
+            border-radius: 6px;
+            font-size: 0.85rem;
+            font-family: inherit;
+            background: var(--bg-secondary);
+        }
+        .inline-form-row input:focus,
+        .inline-form-row select:focus {
+            outline: none;
+            border-color: var(--accent-primary);
+        }
+        .inline-form-actions {
+            display: flex;
+            gap: 0.4rem;
+            justify-content: flex-end;
+        }
+        .inline-form-actions button {
+            padding: 0.4rem 0.7rem;
+            font-size: 0.8rem;
+        }
+
+        .student-row.manage.editing {
+            grid-template-columns: 1fr;
+            background: var(--bg-secondary);
+            border-color: var(--accent-primary);
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>📋 Simple Student Tracker</h1>
+        <div class="subtitle">Round-robin selection · everyone once before anyone twice</div>
+        <div class="main-tabs">
+            <button class="main-tab active" data-tab="session">Session</button>
+            <button class="main-tab" data-tab="class">Class List</button>
+            <button class="main-tab" data-tab="history">History</button>
+            <button class="main-tab" data-tab="data">Data</button>
+        </div>
+    </header>
+
+    <div class="container">
+        <!-- SESSION TAB -->
+        <div id="session-tab" class="tab-content active">
+            <div class="section">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.6rem;">
+                    <span class="filter-badge" id="filter-badge">All students</span>
+                    <button class="secondary" data-action="toggle-grade-filter">Toggle filter</button>
+                </div>
+
+                <div class="current-display" id="current-display">
+                    <div class="current-placeholder">Press <strong>Alt+Shift+S</strong> to pick a student</div>
+                </div>
+
+                <div class="action-grid">
+                    <button class="full" data-action="select-student">🎲 Select Next Student</button>
+                    <button class="danger" data-action="mark-incorrect" id="btn-incorrect" disabled>✗ Incorrect / No answer</button>
+                    <button class="secondary" data-action="mark-absent" id="btn-absent" disabled>🚫 Absent</button>
+                </div>
+
+                <div class="info-cards">
+                    <div class="info-card">
+                        <div class="info-label">In round</div>
+                        <div class="info-value" id="pool-remaining">—</div>
+                    </div>
+                    <div class="info-card">
+                        <div class="info-label">Today's calls</div>
+                        <div class="info-value" id="calls-today">0</div>
+                    </div>
+                    <div class="info-card">
+                        <div class="info-label">Absent today</div>
+                        <div class="info-value" id="absent-count">0</div>
+                    </div>
+                </div>
+
+                <div class="shortcuts">
+                    <div class="shortcut-item"><span>Select next student (current → correct)</span><span class="shortcut-key">Alt+Shift+S</span></div>
+                    <div class="shortcut-item"><span>Mark incorrect / no answer</span><span class="shortcut-key">Alt+Shift+X</span></div>
+                    <div class="shortcut-item"><span>Mark absent</span><span class="shortcut-key">Alt+Shift+A</span></div>
+                    <div class="shortcut-item"><span>Toggle grade filter</span><span class="shortcut-key">Alt+Shift+G</span></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- CLASS LIST TAB -->
+        <div id="class-tab" class="tab-content">
+            <div class="section">
+                <h2>Import class</h2>
+                <div class="form-group">
+                    <label>Upload CSV (firstname,lastname,grade)</label>
+                    <input type="file" id="class-csv-input" accept=".csv">
+                </div>
+                <div class="button-group">
+                    <button data-action="import-csv">📥 Import CSV</button>
+                    <button class="secondary" data-action="download-template">📄 Download template</button>
+                </div>
+            </div>
+
+            <div class="section">
+                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.6rem;">
+                    <h2 style="margin-bottom: 0;">Class list</h2>
+                    <button class="success" data-action="toggle-add-form" id="btn-add-toggle" title="Add a student">＋ Add student</button>
+                </div>
+
+                <div id="add-form" class="inline-form" style="display: none;">
+                    <div class="inline-form-row">
+                        <input type="text" id="add-firstname" placeholder="First name" autocomplete="off">
+                        <input type="text" id="add-lastname" placeholder="Last name" autocomplete="off">
+                        <select id="add-grade">
+                            <option value="4">Year 4</option>
+                            <option value="5">Year 5</option>
+                        </select>
+                    </div>
+                    <div class="inline-form-actions">
+                        <button class="success" data-action="save-new-student" title="Save">✓ Save</button>
+                        <button class="secondary" data-action="cancel-add" title="Cancel">✕ Cancel</button>
+                    </div>
+                </div>
+
+                <div id="student-list">
+                    <div class="empty-state">No students yet. Import a CSV or click ＋ Add student.</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- HISTORY TAB -->
+        <div id="history-tab" class="tab-content">
+            <div class="section">
+                <h2>Summary</h2>
+                <div id="summary-list">
+                    <div class="empty-state">No data yet.</div>
+                </div>
+            </div>
+            <div class="section">
+                <h2>Recent events</h2>
+                <div class="log-container" id="event-log">
+                    <div class="empty-state">No events logged yet.</div>
+                </div>
+            </div>
+        </div>
+
+        <!-- DATA TAB -->
+        <div id="data-tab" class="tab-content">
+            <div class="section">
+                <h2>Export</h2>
+                <p style="font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 0.6rem;">
+                    <strong>Summary CSV:</strong> one row per student (totals)<br>
+                    <strong>Event log CSV:</strong> every call timestamped<br>
+                    <strong>Full backup JSON:</strong> everything — for re-importing later
+                </p>
+                <div class="button-group">
+                    <button data-action="export-summary-csv">📊 Summary CSV</button>
+                    <button data-action="export-events-csv">📜 Event log CSV</button>
+                    <button data-action="export-backup-json">💾 Backup JSON</button>
+                </div>
+            </div>
+
+            <div class="section">
+                <h2>Restore from backup</h2>
+                <div class="form-group">
+                    <label>Upload JSON backup</label>
+                    <input type="file" id="backup-json-input" accept=".json">
+                </div>
+                <button data-action="restore-backup">♻ Restore backup</button>
+            </div>
+
+            <div class="section">
+                <h2>Reset</h2>
+                <div class="button-group">
+                    <button class="secondary" data-action="reset-stats">↻ Reset stats (keep class)</button>
+                    <button class="danger" data-action="clear-all">✕ Delete everything</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="sidebar.js"></script>
+</body>
+</html>
