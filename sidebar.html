@@ -297,12 +297,13 @@
         }
         .inline-form-row {
             display: grid;
-            grid-template-columns: 1fr 1fr auto;
+            grid-template-columns: 2fr 2fr 1fr;
             gap: 0.4rem;
             margin-bottom: 0.5rem;
         }
         .inline-form-row input,
         .inline-form-row select {
+            min-width: 0;
             padding: 0.45rem;
             border: 2px solid var(--border);
             border-radius: 6px;
@@ -350,7 +351,7 @@
             <div class="section">
                 <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.6rem;">
                     <span class="filter-badge" id="filter-badge">All students</span>
-                    <button class="secondary" data-action="toggle-grade-filter">Toggle filter</button>
+                    <button class="secondary" data-action="toggle-group-filter">Toggle filter</button>
                 </div>
 
                 <div class="current-display" id="current-display">
@@ -382,7 +383,7 @@
                     <div class="shortcut-item"><span>Select next student (current → correct)</span><span class="shortcut-key">Alt+Shift+S</span></div>
                     <div class="shortcut-item"><span>Mark incorrect / no answer</span><span class="shortcut-key">Alt+Shift+X</span></div>
                     <div class="shortcut-item"><span>Mark absent</span><span class="shortcut-key">Alt+Shift+A</span></div>
-                    <div class="shortcut-item"><span>Toggle grade filter</span><span class="shortcut-key">Alt+Shift+G</span></div>
+                    <div class="shortcut-item"><span>Toggle group filter</span><span class="shortcut-key">Alt+Shift+G</span></div>
                 </div>
             </div>
         </div>
@@ -392,7 +393,7 @@
             <div class="section">
                 <h2>Import class</h2>
                 <div class="form-group">
-                    <label>Upload CSV (firstname,lastname,grade)</label>
+                    <label>Upload CSV (firstname,lastname,group — group is optional)</label>
                     <input type="file" id="class-csv-input" accept=".csv">
                 </div>
                 <div class="button-group">
@@ -411,10 +412,7 @@
                     <div class="inline-form-row">
                         <input type="text" id="add-firstname" placeholder="First name" autocomplete="off">
                         <input type="text" id="add-lastname" placeholder="Last name" autocomplete="off">
-                        <select id="add-grade">
-                            <option value="4">Year 4</option>
-                            <option value="5">Year 5</option>
-                        </select>
+                        <input type="text" id="add-group" placeholder="Group (optional)" autocomplete="off">
                     </div>
                     <div class="inline-form-actions">
                         <button class="success" data-action="save-new-student" title="Save">✓ Save</button>

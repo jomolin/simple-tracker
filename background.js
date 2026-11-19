@@ -3,13 +3,14 @@
 // ======================
 // Data model (single source of truth, stored in chrome.storage.local):
 // {
-//   students: [{ id, name, grade, timesCalled, correct, incorrect }],
+//   students: [{ id, name, group, timesCalled, correct, incorrect }],
 //   sessionPool: [studentId, ...]   // shuffled queue for round-robin
-//   currentStudent: { id, name, grade } | null
+//   currentStudent: { id, name, group } | null
 //   absentToday: [studentId, ...]
-//   gradeFilter: 'all' | '4' | '5'
+//   groupFilter: 'all' | <group name>   // group names come from whatever students[].group values exist
+//   retriedIds: [studentId, ...]    // students already given their one incorrect-answer retry this round
 //   lastResetDate: 'YYYY-MM-DD'     // for overnight absent reset
-//   eventLog: [{ timestamp, studentId, name, grade, outcome }]
+//   eventLog: [{ timestamp, studentId, name, group, outcome }]
 //     outcome: 'correct' | 'incorrect' | 'absent'
 // }
 
@@ -78,6 +79,35 @@ function todayISO() {
 }
 
 // ======================
+// MIGRATION (grade → group, one-time)
+// ======================
+
+function migrateGradeToGroup(callback) {
+    chrome.storage.local.get(['students', 'gradeFilter', 'groupMigrated'], (result) => {
+        if (result.groupMigrated) {
+            if (callback) callback();
+            return;
+        }
+
+        const students = (result.students || []).map(s => {
+            if (s.group !== undefined) return s;
+            const { grade, ...rest } = s;
+            rest.group = grade !== undefined ? String(grade) : '';
+            return rest;
+        });
+
+        const groupFilter = result.gradeFilter && result.gradeFilter !== 'all'
+            ? String(result.gradeFilter)
+            : 'all';
+
+        chrome.storage.local.set({ students, groupFilter, groupMigrated: true }, () => {
+            console.log('Migrated grade field to group for', students.length, 'students');
+            if (callback) callback();
+        });
+    });
+}
+
+// ======================
 // DAILY RESET (absences only — round-robin pool persists)
 // ======================
 
@@ -103,16 +133,17 @@ function checkAndResetDaily(callback) {
 // ======================
 
 function selectNextStudent() {
-    checkAndResetDaily(() => {
+    migrateGradeToGroup(() => checkAndResetDaily(() => {
         chrome.storage.local.get(
-            ['students', 'sessionPool', 'absentToday', 'gradeFilter', 'currentStudent', 'eventLog'],
+            ['students', 'sessionPool', 'absentToday', 'groupFilter', 'currentStudent', 'eventLog', 'retriedIds'],
             (result) => {
                 const allStudents = result.students || [];
                 let sessionPool = result.sessionPool || [];
                 const absentToday = result.absentToday || [];
-                const gradeFilter = result.gradeFilter || 'all';
+                const groupFilter = result.groupFilter || 'all';
                 const currentStudent = result.currentStudent || null;
                 const eventLog = result.eventLog || [];
+                let retriedIds = result.retriedIds || [];
 
                 if (allStudents.length === 0) {
                     console.log('No students in class list');
@@ -126,8 +157,8 @@ function selectNextStudent() {
 
                 // Build eligible list
                 let eligible = allStudents;
-                if (gradeFilter !== 'all') {
-                    eligible = eligible.filter(s => s.grade === parseInt(gradeFilter));
+                if (groupFilter !== 'all') {
+                    eligible = eligible.filter(s => s.group === groupFilter);
                 }
                 eligible = eligible.filter(s => !absentToday.includes(s.id));
 
@@ -140,9 +171,10 @@ function selectNextStudent() {
                 const eligibleIds = new Set(eligible.map(s => s.id));
                 sessionPool = sessionPool.filter(id => eligibleIds.has(id));
 
-                // Reshuffle when pool empty (round complete)
+                // Reshuffle when pool empty (round complete) — also clears retry allowances for the new round
                 if (sessionPool.length === 0) {
                     sessionPool = shuffleArray(eligible.map(s => s.id));
+                    retriedIds = [];
                     console.log('Round complete — reshuffled', sessionPool.length, 'students');
                 }
 
@@ -152,20 +184,21 @@ function selectNextStudent() {
                 if (!selected) {
                     console.error('Selected ID not in eligible — reshuffling and retrying');
                     sessionPool = shuffleArray(eligible.map(s => s.id));
+                    retriedIds = [];
                     const fallbackId = sessionPool.shift();
                     const fallback = eligible.find(s => s.id === fallbackId);
                     if (!fallback) return;
-                    persistSelection(allStudents, eventLog, fallback, sessionPool);
+                    persistSelection(allStudents, eventLog, fallback, sessionPool, retriedIds);
                     return;
                 }
 
-                persistSelection(allStudents, eventLog, selected, sessionPool);
+                persistSelection(allStudents, eventLog, selected, sessionPool, retriedIds);
             }
         );
-    });
+    }));
 }
 
-function persistSelection(allStudents, eventLog, selected, sessionPool) {
+function persistSelection(allStudents, eventLog, selected, sessionPool, retriedIds) {
     // Increment timesCalled on the chosen student
     const studentInArray = allStudents.find(s => s.id === selected.id);
     if (studentInArray) {
@@ -175,7 +208,8 @@ function persistSelection(allStudents, eventLog, selected, sessionPool) {
     chrome.storage.local.set({
         students: allStudents,
         sessionPool: sessionPool,
-        currentStudent: { id: selected.id, name: selected.name, grade: selected.grade },
+        retriedIds: retriedIds,
+        currentStudent: { id: selected.id, name: selected.name, group: selected.group },
         eventLog: eventLog
     }, () => {
         if (chrome.runtime.lastError) {
@@ -212,7 +246,7 @@ function recordOutcome(allStudents, eventLog, studentId, outcome) {
         timestamp: new Date().toISOString(),
         studentId: student.id,
         name: student.name,
-        grade: student.grade,
+        group: student.group,
         outcome: outcome
     });
 }
@@ -222,7 +256,7 @@ function recordOutcome(allStudents, eventLog, studentId, outcome) {
 // ======================
 
 function markIncorrect() {
-    chrome.storage.local.get(['currentStudent', 'students', 'eventLog'], (result) => {
+    chrome.storage.local.get(['currentStudent', 'students', 'eventLog', 'sessionPool', 'retriedIds'], (result) => {
         const current = result.currentStudent;
         if (!current) {
             console.log('No student on screen to mark incorrect');
@@ -231,15 +265,28 @@ function markIncorrect() {
 
         const allStudents = result.students || [];
         const eventLog = result.eventLog || [];
+        let sessionPool = result.sessionPool || [];
+        let retriedIds = result.retriedIds || [];
 
         recordOutcome(allStudents, eventLog, current.id, 'incorrect');
+
+        // One retry per student per round: requeue at the back of this round's pool,
+        // unless they've already used their retry (prevents them dominating the end of a round).
+        let retried = false;
+        if (!retriedIds.includes(current.id)) {
+            retriedIds = [...retriedIds, current.id];
+            sessionPool = [...sessionPool, current.id];
+            retried = true;
+        }
 
         chrome.storage.local.set({
             students: allStudents,
             eventLog: eventLog,
+            sessionPool: sessionPool,
+            retriedIds: retriedIds,
             currentStudent: null
         }, () => {
-            console.log('Marked incorrect:', current.name);
+            console.log('Marked incorrect:', current.name, retried ? '(requeued for one retry)' : '(retry already used this round)');
             withActiveContentTab((tabId) => {
                 sendMessageToContentScript(tabId, { action: 'hideOverlay' });
             });
@@ -295,29 +342,32 @@ function markAbsent() {
 }
 
 // ======================
-// GRADE FILTER
+// GROUP FILTER
 // ======================
+// Groups are whatever distinct, non-blank values exist in students[].group —
+// there's no fixed list. With 0 or 1 group in use, the cycle is just ['all'],
+// so toggling is a no-op and everyone is always shown.
 
-function toggleGradeFilter() {
-    chrome.storage.local.get(['gradeFilter'], (result) => {
-        const cycle = { 'all': '4', '4': '5', '5': 'all' };
-        const newFilter = cycle[result.gradeFilter || 'all'];
-        const display = {
-            'all': 'All students',
-            '4': 'Year 4 only',
-            '5': 'Year 5 only'
-        };
+function toggleGroupFilter() {
+    chrome.storage.local.get(['students', 'groupFilter'], (result) => {
+        const students = result.students || [];
+        const groups = [...new Set(students.map(s => s.group).filter(g => g))].sort((a, b) => a.localeCompare(b));
+        const cycle = ['all', ...groups];
+
+        const currentIndex = cycle.indexOf(result.groupFilter || 'all');
+        const newFilter = cycle[(currentIndex + 1) % cycle.length];
+        const display = newFilter === 'all' ? 'All students' : `${newFilter} only`;
 
         // Changing the filter wipes the pool so the next round respects the new filter
         chrome.storage.local.set({
-            gradeFilter: newFilter,
+            groupFilter: newFilter,
             sessionPool: []
         }, () => {
-            console.log('Grade filter:', newFilter);
+            console.log('Group filter:', newFilter);
             withActiveContentTab((tabId) => {
                 sendMessageToContentScript(tabId, {
                     action: 'showFilterChange',
-                    filter: display[newFilter]
+                    filter: display
                 });
             });
         });
@@ -333,7 +383,7 @@ chrome.commands.onCommand.addListener((command) => {
         'select-student': selectNextStudent,
         'mark-incorrect': markIncorrect,
         'mark-absent': markAbsent,
-        'toggle-grade-filter': toggleGradeFilter
+        'toggle-grade-filter': toggleGroupFilter
     };
     const handler = map[command];
     if (handler) handler();
@@ -344,7 +394,7 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
         'selectStudent': selectNextStudent,
         'markIncorrect': markIncorrect,
         'markAbsent': markAbsent,
-        'toggleGradeFilter': toggleGradeFilter
+        'toggleGroupFilter': toggleGroupFilter
     };
     const handler = map[request.action];
     if (handler) {
@@ -367,10 +417,10 @@ chrome.action.onClicked.addListener((tab) => {
 
 chrome.runtime.onInstalled.addListener(() => {
     console.log('Simple Student Tracker installed');
-    checkAndResetDaily();
+    migrateGradeToGroup(() => checkAndResetDaily());
 });
 
 chrome.runtime.onStartup.addListener(() => {
     console.log('Simple Student Tracker started');
-    checkAndResetDaily();
+    migrateGradeToGroup(() => checkAndResetDaily());
 });

@@ -8,7 +8,7 @@ let state = {
     currentStudent: null,
     sessionPool: [],
     absentToday: [],
-    gradeFilter: 'all',
+    groupFilter: 'all',
     eventLog: []
 };
 
@@ -66,13 +66,13 @@ function downloadFile(filename, content, mimeType) {
 
 function loadData() {
     chrome.storage.local.get(
-        ['students', 'currentStudent', 'sessionPool', 'absentToday', 'gradeFilter', 'eventLog'],
+        ['students', 'currentStudent', 'sessionPool', 'absentToday', 'groupFilter', 'eventLog'],
         (result) => {
             state.students = result.students || [];
             state.currentStudent = result.currentStudent || null;
             state.sessionPool = result.sessionPool || [];
             state.absentToday = result.absentToday || [];
-            state.gradeFilter = result.gradeFilter || 'all';
+            state.groupFilter = result.groupFilter || 'all';
             state.eventLog = result.eventLog || [];
             renderAll();
         }
@@ -102,10 +102,11 @@ function renderCurrentStudent() {
         const fresh = state.students.find(s => s.id === state.currentStudent.id) || state.currentStudent;
         const total = (fresh.correct || 0) + (fresh.incorrect || 0);
         const accuracy = total > 0 ? Math.round((fresh.correct / total) * 100) : 0;
+        const groupLabel = state.currentStudent.group ? `${escapeHtml(state.currentStudent.group)} · ` : '';
         display.innerHTML = `
             <div class="current-name">${escapeHtml(state.currentStudent.name)}</div>
             <div style="font-size: 0.85rem; margin-top: 0.4rem; color: var(--accent-secondary);">
-                Year ${escapeHtml(state.currentStudent.grade)} · ${fresh.timesCalled || 0} calls · ${accuracy}% accuracy
+                ${groupLabel}${fresh.timesCalled || 0} calls · ${accuracy}% accuracy
             </div>
         `;
         document.getElementById('btn-incorrect').disabled = false;
@@ -118,15 +119,15 @@ function renderCurrentStudent() {
 }
 
 function renderFilterBadge() {
-    const labels = { 'all': 'All students', '4': 'Year 4 only', '5': 'Year 5 only' };
-    document.getElementById('filter-badge').textContent = labels[state.gradeFilter] || labels['all'];
+    document.getElementById('filter-badge').textContent =
+        state.groupFilter && state.groupFilter !== 'all' ? `${state.groupFilter} only` : 'All students';
 }
 
 function renderInfoCards() {
     // Eligible students (matching filter, not absent)
     let eligible = state.students;
-    if (state.gradeFilter !== 'all') {
-        eligible = eligible.filter(s => s.grade === parseInt(state.gradeFilter));
+    if (state.groupFilter !== 'all') {
+        eligible = eligible.filter(s => s.group === state.groupFilter);
     }
     eligible = eligible.filter(s => !state.absentToday.includes(s.id));
 
@@ -146,9 +147,10 @@ function renderStudentList() {
         list.innerHTML = '<div class="empty-state">No students yet. Import a CSV or click ＋ Add student.</div>';
         return;
     }
-    // Sort by grade, then name
+    // Sort by group, then name
     const sorted = [...state.students].sort((a, b) => {
-        if (a.grade !== b.grade) return a.grade - b.grade;
+        const groupCompare = (a.group || '').localeCompare(b.group || '');
+        if (groupCompare !== 0) return groupCompare;
         return a.name.localeCompare(b.name);
     });
 
@@ -163,10 +165,7 @@ function renderStudentList() {
                     <div class="inline-form-row">
                         <input type="text" id="edit-firstname" value="${escapeHtml(firstname)}" placeholder="First name" autocomplete="off">
                         <input type="text" id="edit-lastname" value="${escapeHtml(lastname)}" placeholder="Last name" autocomplete="off">
-                        <select id="edit-grade">
-                            <option value="4" ${s.grade === 4 ? 'selected' : ''}>Year 4</option>
-                            <option value="5" ${s.grade === 5 ? 'selected' : ''}>Year 5</option>
-                        </select>
+                        <input type="text" id="edit-group" value="${escapeHtml(s.group || '')}" placeholder="Group (optional)" autocomplete="off">
                     </div>
                     <div class="inline-form-actions">
                         <button class="success" data-action="save-edit" data-id="${s.id}">✓ Save</button>
@@ -179,12 +178,13 @@ function renderStudentList() {
         const isAbsent = state.absentToday.includes(s.id);
         const total = (s.correct || 0) + (s.incorrect || 0);
         const accuracy = total > 0 ? Math.round((s.correct / total) * 100) : 0;
+        const groupLabel = s.group ? `${escapeHtml(s.group)} · ` : '';
         return `
             <div class="student-row manage ${isAbsent ? 'absent' : ''}">
                 <div>
                     <div class="student-name">${escapeHtml(s.name)}</div>
                     <div class="student-meta">
-                        Year ${escapeHtml(s.grade)} · ${s.timesCalled || 0} calls · ${s.correct || 0}✓ ${s.incorrect || 0}✗ · ${accuracy}%
+                        ${groupLabel}${s.timesCalled || 0} calls · ${s.correct || 0}✓ ${s.incorrect || 0}✗ · ${accuracy}%
                     </div>
                 </div>
                 <button class="secondary" data-action="start-edit" data-id="${s.id}" title="Edit student">✎</button>
@@ -204,17 +204,19 @@ function renderSummaryList() {
         return;
     }
     const sorted = [...state.students].sort((a, b) => {
-        if (a.grade !== b.grade) return a.grade - b.grade;
+        const groupCompare = (a.group || '').localeCompare(b.group || '');
+        if (groupCompare !== 0) return groupCompare;
         return a.name.localeCompare(b.name);
     });
     list.innerHTML = sorted.map(s => {
         const total = (s.correct || 0) + (s.incorrect || 0);
         const accuracy = total > 0 ? Math.round((s.correct / total) * 100) : 0;
+        const groupLabel = s.group ? `${escapeHtml(s.group)} · ` : '';
         return `
             <div class="student-row">
                 <div>
                     <div class="student-name">${escapeHtml(s.name)}</div>
-                    <div class="student-meta">Year ${escapeHtml(s.grade)} · ${s.timesCalled || 0} calls</div>
+                    <div class="student-meta">${groupLabel}${s.timesCalled || 0} calls</div>
                 </div>
                 <div style="text-align: right; font-size: 0.85rem;">
                     <div style="color: var(--success); font-weight: 600;">${s.correct || 0} ✓</div>
@@ -240,10 +242,11 @@ function renderEventLog() {
             month: 'short', day: 'numeric',
             hour: '2-digit', minute: '2-digit'
         });
+        const groupLabel = e.group ? ` <span style="color: var(--text-secondary);">(${escapeHtml(e.group)})</span>` : '';
         return `
             <div class="log-row">
                 <div class="log-time">${escapeHtml(timeStr)}</div>
-                <div>${escapeHtml(e.name)} <span style="color: var(--text-secondary);">(Yr ${escapeHtml(e.grade)})</span></div>
+                <div>${escapeHtml(e.name)}${groupLabel}</div>
                 <div class="log-outcome ${e.outcome}">${e.outcome}</div>
             </div>
         `;
@@ -265,11 +268,11 @@ function switchTab(tabName) {
 // CLASS LIST MANAGEMENT
 // ======================
 
-function makeNewStudent(name, grade) {
+function makeNewStudent(name, group) {
     return {
         id: generateId(),
         name: name,
-        grade: parseInt(grade) || 4,
+        group: (group || '').trim(),
         timesCalled: 0,
         correct: 0,
         incorrect: 0
@@ -300,7 +303,7 @@ function importCSV() {
         let skipped = 0;
         for (let i = startIndex; i < lines.length; i++) {
             const parts = lines[i].split(',').map(p => p.trim());
-            const [firstname, lastname, grade] = parts;
+            const [firstname, lastname, group] = parts;
             if (!firstname || !lastname) {
                 skipped++;
                 continue;
@@ -310,7 +313,7 @@ function importCSV() {
                 skipped++;
                 continue;
             }
-            state.students.push(makeNewStudent(fullName, grade));
+            state.students.push(makeNewStudent(fullName, group));
             added++;
         }
         saveStudents();
@@ -322,7 +325,7 @@ function importCSV() {
 }
 
 function downloadTemplate() {
-    const csv = 'firstname,lastname,grade\nJohn,Smith,4\nJane,Doe,5\n';
+    const csv = 'firstname,lastname,group\nJohn,Smith,\nJane,Doe,Group A\n';
     downloadFile('class-list-template.csv', csv, 'text/csv');
 }
 
@@ -337,7 +340,7 @@ function toggleAddForm() {
         btn.classList.add('secondary');
         document.getElementById('add-firstname').value = '';
         document.getElementById('add-lastname').value = '';
-        document.getElementById('add-grade').value = '4';
+        document.getElementById('add-group').value = '';
         document.getElementById('add-firstname').focus();
     } else {
         form.style.display = 'none';
@@ -359,7 +362,7 @@ function cancelAdd() {
 function saveNewStudent() {
     const firstname = document.getElementById('add-firstname').value.trim();
     const lastname = document.getElementById('add-lastname').value.trim();
-    const grade = parseInt(document.getElementById('add-grade').value) || 4;
+    const group = document.getElementById('add-group').value.trim();
 
     if (!firstname || !lastname) {
         alert('Please enter both a first name and a last name.');
@@ -370,7 +373,7 @@ function saveNewStudent() {
         alert(`${fullName} is already in the class list.`);
         return;
     }
-    state.students.push(makeNewStudent(fullName, grade));
+    state.students.push(makeNewStudent(fullName, group));
     saveStudents();
     renderAll();
     // Reset form fields but keep it open so multiple students can be added quickly
@@ -399,7 +402,7 @@ function cancelEdit() {
 function saveEdit(studentId) {
     const firstname = document.getElementById('edit-firstname').value.trim();
     const lastname = document.getElementById('edit-lastname').value.trim();
-    const grade = parseInt(document.getElementById('edit-grade').value) || 4;
+    const group = document.getElementById('edit-group').value.trim();
 
     if (!firstname || !lastname) {
         alert('Please enter both a first name and a last name.');
@@ -416,7 +419,7 @@ function saveEdit(studentId) {
     const student = state.students.find(s => s.id === studentId);
     if (!student) return;
     student.name = fullName;
-    student.grade = grade;
+    student.group = group;
 
     saveStudents();
     editingStudentId = null;
@@ -452,13 +455,13 @@ function exportSummaryCSV() {
         alert('No students to export.');
         return;
     }
-    const header = 'Name,Grade,Times Called,Correct,Incorrect,Accuracy %';
+    const header = 'Name,Group,Times Called,Correct,Incorrect,Accuracy %';
     const rows = state.students.map(s => {
         const total = (s.correct || 0) + (s.incorrect || 0);
         const accuracy = total > 0 ? Math.round((s.correct / total) * 100) : 0;
         return [
             csvEscape(s.name),
-            csvEscape(s.grade),
+            csvEscape(s.group),
             csvEscape(s.timesCalled || 0),
             csvEscape(s.correct || 0),
             csvEscape(s.incorrect || 0),
@@ -474,11 +477,11 @@ function exportEventsCSV() {
         alert('No events to export.');
         return;
     }
-    const header = 'Timestamp,Name,Grade,Outcome';
+    const header = 'Timestamp,Name,Group,Outcome';
     const rows = state.eventLog.map(e => [
         csvEscape(e.timestamp),
         csvEscape(e.name),
-        csvEscape(e.grade),
+        csvEscape(e.group),
         csvEscape(e.outcome)
     ].join(','));
     const csv = [header, ...rows].join('\n');
@@ -492,7 +495,7 @@ function exportBackupJSON() {
         students: state.students,
         eventLog: state.eventLog,
         absentToday: state.absentToday,
-        gradeFilter: state.gradeFilter
+        groupFilter: state.groupFilter
     };
     downloadFile(
         `tracker-backup-${todayISO()}.json`,
@@ -517,16 +520,23 @@ function restoreBackup() {
             if (!data.students || !Array.isArray(data.students)) {
                 throw new Error('Invalid backup file — missing students array.');
             }
-            state.students = data.students;
+            // Old backups (pre-groups) store grade instead of group — convert on the way in.
+            state.students = data.students.map(s => {
+                if (s.group !== undefined) return s;
+                const { grade, ...rest } = s;
+                return { ...rest, group: grade !== undefined ? String(grade) : '' };
+            });
             state.eventLog = data.eventLog || [];
             state.absentToday = data.absentToday || [];
-            state.gradeFilter = data.gradeFilter || 'all';
+            state.groupFilter = data.groupFilter || (data.gradeFilter && data.gradeFilter !== 'all' ? String(data.gradeFilter) : 'all');
 
             chrome.storage.local.set({
                 students: state.students,
                 eventLog: state.eventLog,
                 absentToday: state.absentToday,
-                gradeFilter: state.gradeFilter,
+                groupFilter: state.groupFilter,
+                retriedIds: [],
+                groupMigrated: true,
                 sessionPool: [],
                 currentStudent: null
             }, () => {
@@ -557,6 +567,7 @@ function resetStats() {
         students: state.students,
         eventLog: [],
         sessionPool: [],
+        retriedIds: [],
         currentStudent: null,
         absentToday: []
     }, () => {
@@ -574,7 +585,7 @@ function clearAll() {
             currentStudent: null,
             sessionPool: [],
             absentToday: [],
-            gradeFilter: 'all',
+            groupFilter: 'all',
             eventLog: []
         };
         renderAll();
@@ -602,7 +613,7 @@ document.addEventListener('click', (e) => {
         'select-student':       () => chrome.runtime.sendMessage({ action: 'selectStudent' }),
         'mark-incorrect':       () => chrome.runtime.sendMessage({ action: 'markIncorrect' }),
         'mark-absent':          () => chrome.runtime.sendMessage({ action: 'markAbsent' }),
-        'toggle-grade-filter':  () => chrome.runtime.sendMessage({ action: 'toggleGradeFilter' }),
+        'toggle-group-filter':  () => chrome.runtime.sendMessage({ action: 'toggleGroupFilter' }),
         'import-csv':           importCSV,
         'download-template':    downloadTemplate,
         'toggle-add-form':      toggleAddForm,
@@ -659,7 +670,7 @@ chrome.storage.onChanged.addListener((changes, areaName) => {
     if (changes.currentStudent) state.currentStudent = changes.currentStudent.newValue || null;
     if (changes.sessionPool) state.sessionPool = changes.sessionPool.newValue || [];
     if (changes.absentToday) state.absentToday = changes.absentToday.newValue || [];
-    if (changes.gradeFilter) state.gradeFilter = changes.gradeFilter.newValue || 'all';
+    if (changes.groupFilter) state.groupFilter = changes.groupFilter.newValue || 'all';
     if (changes.eventLog) state.eventLog = changes.eventLog.newValue || [];
 
     renderAll();

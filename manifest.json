@@ -58,7 +58,7 @@
       "suggested_key": {
         "default": "Alt+Shift+G"
       },
-      "description": "Cycle grade filter: All / Year 4 / Year 5",
+      "description": "Cycle group filter: All, then each group you've defined",
       "global": true
     }
   },
